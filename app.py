@@ -299,15 +299,33 @@ async def run_scrape(job_id: str, url: str, scrape_details: bool, max_books: int
     job = JOBS[job_id]
     log = lambda msg: job["q"].put({"type": "log", "msg": msg})
 
+    # Helper function to check if stop was requested
+    def should_stop():
+        return job.get("stop_requested", False)
+
     try:
         from playwright.async_api import async_playwright
         log("🚀  Launching browser...")
+
+        # Check for stop request before starting browser
+        if should_stop():
+            log("⏹️  Stop requested before browser launch")
+            job["status"] = "stopped"
+            return
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
                 args=["--no-sandbox", "--disable-blink-features=AutomationControlled"]
             )
+            
+            # Check for stop request after browser launch
+            if should_stop():
+                log("⏹️  Stop requested after browser launch")
+                await browser.close()
+                job["status"] = "stopped"
+                return
+                
             ctx = await browser.new_context(
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -327,6 +345,13 @@ async def run_scrape(job_id: str, url: str, scrape_details: bool, max_books: int
             base_url = url.split("?")[0].rstrip("/")
             page_num = 1
             while len(books) < max_books:
+                # Check for stop request before each page
+                if should_stop():
+                    log("⏹️  Stop requested during pagination")
+                    await browser.close()
+                    job["status"] = "stopped"
+                    return
+                    
                 if page_num == 1:
                     page_url = base_url
                 else:
@@ -349,6 +374,13 @@ async def run_scrape(job_id: str, url: str, scrape_details: bool, max_books: int
             if scrape_details:
                 log(f"🔍  Visiting individual book pages for details...")
                 for i, book in enumerate(books):
+                    # Check for stop request before each book detail scrape
+                    if should_stop():
+                        log("⏹️  Stop requested during detail scraping")
+                        await browser.close()
+                        job["status"] = "stopped"
+                        return
+                        
                     title_short = book.get("title", "Unknown")[:45]
                     log(f"  [{i+1}/{len(books)}] {title_short}...")
                     books[i] = await scrape_book_page(page, book, log)
@@ -523,6 +555,7 @@ def start_scrape():
         "q": queue.Queue(),
         "books": [],
         "error": None,
+        "stop_requested": False,  # Add stop flag
     }
 
     def thread_target():
@@ -535,6 +568,25 @@ def start_scrape():
     t = threading.Thread(target=thread_target, daemon=True)
     t.start()
     return jsonify({"job_id": job_id})
+
+
+@app.route("/api/scrape/<job_id>/stop", methods=["POST"])
+def stop_scrape(job_id):
+    if job_id not in JOBS:
+        return jsonify({"error": "Job not found"}), 404
+    
+    job = JOBS[job_id]
+    if job["status"] == "done":
+        return jsonify({"error": "Scraping already completed"}), 400
+    if job["status"] == "error":
+        return jsonify({"error": "Scraping already failed"}), 400
+    
+    # Set stop flag
+    job["stop_requested"] = True
+    job["status"] = "stopped"
+    job["q"].put({"type": "stopped", "msg": "Scraping stopped by user"})
+    
+    return jsonify({"message": "Scraping stopped"})
 
 
 @app.route("/api/stream/<job_id>")

@@ -184,6 +184,30 @@
   .btn-scrape:active:not(:disabled) { transform: scale(.98); }
   .btn-scrape:disabled { opacity: .45; cursor: not-allowed; }
 
+  /* ── STOP BUTTON ── */
+  .btn-stop {
+    background: var(--surface);
+    color: var(--red);
+    border: 1px solid var(--red);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .2s;
+    margin-left: auto;
+  }
+  .btn-stop:hover {
+    background: var(--red);
+    color: #fff;
+    transform: scale(1.05);
+  }
+  .btn-stop:active {
+    transform: scale(.95);
+  }
+
   /* ── PRESET CHIPS ── */
   .presets {
     display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px;
@@ -441,6 +465,9 @@
       <span id="status-text" style="font-family:var(--mono);font-size:12px;color:var(--muted)">
         Initialising scraper...
       </span>
+      <button id="btn-stop" class="btn-stop" onclick="stopScraping()" style="display:none;">
+        ⏹ Stop
+      </button>
     </div>
 
     <div class="progress-bar-wrap">
@@ -535,6 +562,7 @@ async function startScrape() {
   document.getElementById('results-panel').style.display = 'none';
   document.getElementById('scrape-btn').disabled = true;
   document.getElementById('btn-text').textContent = 'Scraping…';
+  document.getElementById('btn-stop').style.display = 'inline-block';  // Show stop button
   document.getElementById('log-box').innerHTML = '';
   setProgress(5);
 
@@ -569,14 +597,47 @@ async function startScrape() {
       setProgress(100);
       es.close();
       showDone(msg.count);
+    } else if (msg.type === 'stopped') {
+      setProgress(100);
+      es.close();
+      showStopped();
     } else if (msg.type === 'error') {
       es.close();
       document.getElementById('status-badge').className = 'badge badge-error';
       document.getElementById('status-badge').innerHTML = '❌ Error';
       document.getElementById('scrape-btn').disabled = false;
       document.getElementById('btn-text').textContent = 'Scrape';
+      document.getElementById('btn-stop').style.display = 'none';
     }
   };
+}
+
+async function stopScraping() {
+  if (!currentJobId) return;
+  
+  try {
+    const res = await fetch(`/api/scrape/${currentJobId}/stop`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'}
+    });
+    const data = await res.json();
+    if (data.error) {
+      addLog('❌ ' + data.error);
+    } else {
+      addLog('⏹️ Stop request sent...');
+    }
+  } catch (e) {
+    addLog('❌ Failed to stop: ' + e.message);
+  }
+}
+
+function showStopped() {
+  document.getElementById('status-badge').className = 'badge badge-error';
+  document.getElementById('status-badge').innerHTML = '⏹️ Stopped';
+  document.getElementById('status-text').textContent = 'Scraping stopped by user';
+  document.getElementById('scrape-btn').disabled = false;
+  document.getElementById('btn-text').textContent = 'Scrape';
+  document.getElementById('btn-stop').style.display = 'none';
 }
 
 async function showDone(count) {
@@ -585,6 +646,7 @@ async function showDone(count) {
   document.getElementById('status-text').textContent = `${count} books extracted`;
   document.getElementById('scrape-btn').disabled = false;
   document.getElementById('btn-text').textContent = 'Scrape';
+  document.getElementById('btn-stop').style.display = 'none';  // Hide stop button
 
   // Set download links
   document.getElementById('dl-xlsx').href = `/api/download/${currentJobId}`;
@@ -628,6 +690,9 @@ function resetApp() {
   currentJobId = null;
   document.getElementById('progress-panel').style.display = 'none';
   document.getElementById('results-panel').style.display = 'none';
+  document.getElementById('btn-stop').style.display = 'none';  // Hide stop button
+  document.getElementById('scrape-btn').disabled = false;
+  document.getElementById('btn-text').textContent = 'Scrape';
   document.getElementById('url-input').value = '';
   document.getElementById('url-input').focus();
   window.scrollTo({top:0,behavior:'smooth'});
