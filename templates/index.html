@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KindleScrape — Amazon Bestseller Extractor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #0a0d14;
+    --surface:  #111520;
+    --card:     #161b2e;
+    --border:   #1e2840;
+    --accent:   #4f8ef7;
+    --accent2:  #a78bfa;
+    --green:    #34d399;
+    --yellow:   #fbbf24;
+    --red:      #f87171;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --mono:     'Space Mono', monospace;
+    --sans:     'Syne', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid noise background */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(rgba(79,142,247,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(79,142,247,.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  /* Glow blobs */
+  .blob {
+    position: fixed; border-radius: 50%;
+    filter: blur(120px); opacity: .12; pointer-events: none; z-index: 0;
+  }
+  .blob-1 { width: 500px; height: 500px; background: #4f8ef7; top: -100px; left: -100px; }
+  .blob-2 { width: 400px; height: 400px; background: #a78bfa; bottom: -80px; right: -80px; }
+
+  .wrapper { position: relative; z-index: 1; max-width: 960px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* ── HEADER ── */
+  header {
+    padding: 48px 0 36px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .logo-icon {
+    width: 48px; height: 48px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 12px;
+    display: grid; place-items: center;
+    font-size: 22px; flex-shrink: 0;
+    box-shadow: 0 0 24px rgba(79,142,247,.4);
+  }
+  .logo-text h1 {
+    font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .logo-text p { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+
+  /* ── MAIN CARD ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::after {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: .5;
+  }
+
+  .card-title {
+    font-size: 11px; font-weight: 600; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--accent);
+    font-family: var(--mono); margin-bottom: 20px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-title::before {
+    content: ''; width: 6px; height: 6px;
+    background: var(--accent); border-radius: 50%;
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  /* ── URL INPUT ── */
+  .input-row {
+    display: flex; gap: 12px; align-items: stretch;
+  }
+  .input-wrap {
+    flex: 1; position: relative;
+  }
+  .url-input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px 14px 44px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .url-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(79,142,247,.15);
+  }
+  .url-input::placeholder { color: var(--muted); }
+  .input-icon {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: 16px; pointer-events: none;
+  }
+
+  /* ── OPTIONS ROW ── */
+  .options-row {
+    display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap;
+  }
+  .option-item {
+    display: flex; align-items: center; gap: 8px;
+    cursor: pointer; user-select: none;
+  }
+  .option-item input[type="checkbox"] {
+    width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer;
+  }
+  .option-item label { font-size: 13px; color: var(--text); cursor: pointer; }
+  .option-item .sublabel { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+  select.num-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 6px 10px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  /* ── BUTTON ── */
+  .btn-scrape {
+    background: linear-gradient(135deg, var(--accent), #2d6ef0);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 0 28px;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: .3px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity .2s, transform .1s, box-shadow .2s;
+    box-shadow: 0 4px 20px rgba(79,142,247,.35);
+    display: flex; align-items: center; gap: 8px;
+    min-height: 48px;
+  }
+  .btn-scrape:hover:not(:disabled) { opacity: .9; box-shadow: 0 6px 28px rgba(79,142,247,.5); }
+  .btn-scrape:active:not(:disabled) { transform: scale(.98); }
+  .btn-scrape:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ── PRESET CHIPS ── */
+  .presets {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px;
+  }
+  .preset-label { font-size: 11px; color: var(--muted); font-family: var(--mono); align-self: center; }
+  .chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--muted);
+    cursor: pointer;
+    transition: border-color .2s, color .2s;
+    white-space: nowrap;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── PROGRESS PANEL ── */
+  #progress-panel { display: none; }
+
+  .progress-bar-wrap {
+    background: var(--surface);
+    border-radius: 6px; height: 6px;
+    overflow: hidden; margin-bottom: 20px;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 6px;
+    width: 0%;
+    transition: width .4s ease;
+    box-shadow: 0 0 10px var(--accent);
+  }
+
+  .log-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    height: 220px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .log-box::-webkit-scrollbar { width: 4px; }
+  .log-box::-webkit-scrollbar-track { background: transparent; }
+  .log-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .log-line { margin-bottom: 2px; }
+  .log-line.info  { color: var(--text); }
+  .log-line.warn  { color: var(--yellow); }
+  .log-line.error { color: var(--red); }
+  .log-line.done  { color: var(--green); }
+
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── STATUS BADGE ── */
+  .status-row {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+  }
+  .badge {
+    font-size: 11px; font-family: var(--mono); font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    padding: 4px 12px; border-radius: 20px;
+  }
+  .badge-running { background: rgba(79,142,247,.15); color: var(--accent); }
+  .badge-done    { background: rgba(52,211,153,.15); color: var(--green); }
+  .badge-error   { background: rgba(248,113,113,.15); color: var(--red); }
+
+  /* ── RESULTS ── */
+  #results-panel { display: none; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px; margin-bottom: 24px;
+  }
+  .stat-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+  .stat-num {
+    font-size: 28px; font-weight: 800; font-family: var(--mono);
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: block;
+  }
+  .stat-label { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 4px; }
+
+  /* Download buttons */
+  .dl-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+
+  .btn-dl {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 22px; border-radius: 10px;
+    font-family: var(--sans); font-size: 14px; font-weight: 600;
+    cursor: pointer; border: none; transition: opacity .2s, transform .1s;
+    text-decoration: none;
+  }
+  .btn-dl:active { transform: scale(.97); }
+  .btn-xl {
+    background: linear-gradient(135deg, #1a7a4a, #16a34a);
+    color: #fff; box-shadow: 0 4px 16px rgba(22,163,74,.35);
+  }
+  .btn-csv {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-new {
+    background: var(--surface);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    margin-left: auto;
+  }
+
+  /* Preview table */
+  .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead tr { background: var(--surface); }
+  thead th {
+    padding: 10px 14px; text-align: left;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  tbody tr:nth-child(even) { background: rgba(255,255,255,.02); }
+  tbody tr:hover { background: rgba(79,142,247,.06); }
+  tbody td {
+    padding: 10px 14px; color: var(--text);
+    border-bottom: 1px solid var(--border);
+    max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .rank-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff; font-weight: 700; font-size: 12px; font-family: var(--mono);
+  }
+  .rating-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(251,191,36,.1); color: var(--yellow);
+    border-radius: 6px; padding: 2px 8px; font-family: var(--mono); font-size: 11px;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    text-align: center; margin-top: 48px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+
+  /* ── ANIMATION ── */
+  .fade-in { animation: fadeUp .4s ease forwards; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (max-width: 600px) {
+    .input-row { flex-direction: column; }
+    .btn-scrape { width: 100%; justify-content: center; min-height: 44px; }
+  }
+</style>
+</head>
+<body>
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+
+<div class="wrapper">
+
+  <header>
+    <div class="logo-icon">📚</div>
+    <div class="logo-text">
+      <h1>KindleScrape</h1>
+      <p>// amazon bestseller data extractor</p>
+    </div>
+  </header>
+
+  <!-- ── INPUT CARD ── -->
+  <div class="card fade-in" id="input-card">
+    <div class="card-title">Target URL</div>
+
+    <div class="input-row">
+      <div class="input-wrap">
+        <span class="input-icon">🔗</span>
+        <input
+          type="text"
+          class="url-input"
+          id="url-input"
+          placeholder="https://www.amazon.com/Best-Sellers-Paranormal-Romance/zgbs/digital-text/..."
+          spellcheck="false"
+          autocomplete="off"
+        />
+      </div>
+      <button class="btn-scrape" id="scrape-btn" onclick="startScrape()">
+        <span id="btn-icon">⚡</span>
+        <span id="btn-text">Scrape</span>
+      </button>
+    </div>
+
+    <!-- Preset chips -->
+    <div class="presets">
+      <span class="preset-label">Quick load →</span>
+      <span class="chip" onclick="setPreset('paranormal')">🧛 Paranormal Romance</span>
+      <span class="chip" onclick="setPreset('fantasy')">🧙 Fantasy Romance</span>
+      <span class="chip" onclick="setPreset('scifi')">🚀 Sci-Fi Romance</span>
+      <span class="chip" onclick="setPreset('vampire')">🩸 Vampire Romance</span>
+    </div>
+
+    <!-- Options -->
+    <div class="options-row" style="margin-top:20px; padding-top:20px; border-top:1px solid var(--border)">
+      <div class="option-item">
+        <input type="checkbox" id="opt-details" checked>
+        <div>
+          <label for="opt-details">Scrape individual book pages</label>
+          <div class="sublabel">+ description, publisher, publication date</div>
+        </div>
+      </div>
+      <div class="option-item">
+        <label style="color:var(--muted)">Max books:</label>
+        <select class="num-select" id="opt-max">
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PROGRESS CARD ── -->
+  <div class="card fade-in" id="progress-panel">
+    <div class="card-title">Live Progress</div>
+
+    <div class="status-row">
+      <span id="status-badge" class="badge badge-running">
+        <span class="spinner"></span> Running
+      </span>
+      <span id="status-text" style="font-family:var(--mono);font-size:12px;color:var(--muted)">
+        Initialising scraper...
+      </span>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+
+    <div class="log-box" id="log-box"></div>
+  </div>
+
+  <!-- ── RESULTS CARD ── -->
+  <div class="card fade-in" id="results-panel">
+    <div class="card-title">Results</div>
+
+    <div class="stats-grid" id="stats-grid"></div>
+
+    <div class="dl-row">
+      <a class="btn-dl btn-xl" id="dl-xlsx" href="#">
+        ⬇️ Download Excel (.xlsx)
+      </a>
+      <a class="btn-dl btn-csv" id="dl-csv" href="#">
+        ⬇️ Download CSV
+      </a>
+      <button class="btn-dl btn-new" onclick="resetApp()">
+        ↩ New Scrape
+      </button>
+    </div>
+
+    <div style="margin-bottom:12px;">
+      <span style="font-size:11px;color:var(--muted);font-family:var(--mono);">
+        Preview (first 5 results) — download for full dataset
+      </span>
+    </div>
+    <div class="table-wrap">
+      <table id="preview-table">
+        <thead>
+          <tr>
+            <th>#</th><th>Title</th><th>Author</th>
+            <th>Rating</th><th>Reviews</th><th>Price</th>
+            <th>Publisher</th><th>Pub Date</th>
+          </tr>
+        </thead>
+        <tbody id="preview-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- .wrapper -->
+
+<footer>
+  built for Pocket FM internship assignment &nbsp;·&nbsp;
+  <a href="https://www.amazon.com/Best-Sellers-Paranormal-Romance/zgbs/digital-text/6190484011" target="_blank">target page ↗</a>
+</footer>
+
+<script>
+const PRESETS = {
+  paranormal: 'https://www.amazon.com/Best-Sellers-Kindle-Store-Paranormal-Romance/zgbs/digital-text/6190484011/ref=zg_bs_nav_kstore_2_6190483011',
+  fantasy:    'https://www.amazon.com/Best-Sellers-Kindle-Store-Fantasy/zgbs/digital-text/158571011/ref=zg_bs_nav_kstore_2_158570011',
+  scifi:      'https://www.amazon.com/Best-Sellers-Kindle-Store-Science-Fiction/zgbs/digital-text/158566011/ref=zg_bs_nav_kstore_2_158565011',
+  vampire:    'https://www.amazon.com/Best-Sellers-Kindle-Store-Vampire/zgbs/digital-text/6190516011/ref=zg_bs_nav_kstore_2_6190483011',
+};
+
+let currentJobId = null;
+
+function setPreset(key) {
+  document.getElementById('url-input').value = PRESETS[key];
+  document.getElementById('url-input').focus();
+}
+
+function addLog(msg) {
+  const box = document.getElementById('log-box');
+  const line = document.createElement('div');
+  line.className = 'log-line ' +
+    (msg.includes('⚠️') || msg.includes('CAPTCHA') ? 'warn' :
+     msg.includes('❌') ? 'error' :
+     msg.includes('🎉') || msg.includes('✅') ? 'done' : 'info');
+  const ts = new Date().toLocaleTimeString('en', {hour12:false});
+  line.textContent = `[${ts}] ${msg}`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setProgress(val) {
+  document.getElementById('progress-bar').style.width = val + '%';
+}
+
+async function startScrape() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) { alert('Please enter a URL first'); return; }
+
+  // Show progress panel
+  document.getElementById('progress-panel').style.display = 'block';
+  document.getElementById('results-panel').style.display = 'none';
+  document.getElementById('scrape-btn').disabled = true;
+  document.getElementById('btn-text').textContent = 'Scraping…';
+  document.getElementById('log-box').innerHTML = '';
+  setProgress(5);
+
+  // Start job
+  const res = await fetch('/api/scrape', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      url,
+      scrape_details: document.getElementById('opt-details').checked,
+      max_books: parseInt(document.getElementById('opt-max').value),
+    })
+  });
+  const data = await res.json();
+  if (data.error) { addLog('❌ ' + data.error); return; }
+
+  currentJobId = data.job_id;
+
+  // Stream events
+  const es = new EventSource(`/api/stream/${currentJobId}`);
+  es.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'log') {
+      addLog(msg.msg);
+      // Crude progress from log messages
+      if (msg.msg.includes('page 1')) setProgress(15);
+      if (msg.msg.includes('page 2')) setProgress(30);
+      if (msg.msg.includes('individual')) setProgress(45);
+    } else if (msg.type === 'progress') {
+      setProgress(msg.val);
+    } else if (msg.type === 'done') {
+      setProgress(100);
+      es.close();
+      showDone(msg.count);
+    } else if (msg.type === 'error') {
+      es.close();
+      document.getElementById('status-badge').className = 'badge badge-error';
+      document.getElementById('status-badge').innerHTML = '❌ Error';
+      document.getElementById('scrape-btn').disabled = false;
+      document.getElementById('btn-text').textContent = 'Scrape';
+    }
+  };
+}
+
+async function showDone(count) {
+  document.getElementById('status-badge').className = 'badge badge-done';
+  document.getElementById('status-badge').innerHTML = '✅ Complete';
+  document.getElementById('status-text').textContent = `${count} books extracted`;
+  document.getElementById('scrape-btn').disabled = false;
+  document.getElementById('btn-text').textContent = 'Scrape';
+
+  // Set download links
+  document.getElementById('dl-xlsx').href = `/api/download/${currentJobId}`;
+  document.getElementById('dl-csv').href  = `/api/download_csv/${currentJobId}`;
+
+  // Fetch preview
+  const r = await fetch(`/api/preview/${currentJobId}`);
+  const d = await r.json();
+
+  // Stats
+  // Stats come from full dataset via d.stats — not the 5-book preview slice
+  const s = d.stats;
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-box"><span class="stat-num">${d.count}</span><div class="stat-label">books scraped</div></div>
+    <div class="stat-box"><span class="stat-num">${s.with_price}</span><div class="stat-label">with price</div></div>
+    <div class="stat-box"><span class="stat-num">${s.with_rating}</span><div class="stat-label">with rating</div></div>
+    <div class="stat-box"><span class="stat-num">${s.with_description}</span><div class="stat-label">with description</div></div>
+    <div class="stat-box"><span class="stat-num">${s.with_publisher}</span><div class="stat-label">with publisher</div></div>
+  `;
+
+  // Preview table
+  const tbody = document.getElementById('preview-body');
+  tbody.innerHTML = d.books.map(b => `
+    <tr>
+      <td><span class="rank-badge">${b.rank}</span></td>
+      <td title="${b.title}">${b.title || '—'}</td>
+      <td>${b.author || '—'}</td>
+      <td>${b.rating ? `<span class="rating-pill">⭐ ${b.rating}</span>` : '—'}</td>
+      <td>${b.num_reviews ? Number(b.num_reviews).toLocaleString() : '—'}</td>
+      <td>${b.price || '—'}</td>
+      <td>${b.publisher || '—'}</td>
+      <td>${b.publication_date || '—'}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('results-panel').style.display = 'block';
+  document.getElementById('results-panel').scrollIntoView({behavior:'smooth'});
+}
+
+function resetApp() {
+  currentJobId = null;
+  document.getElementById('progress-panel').style.display = 'none';
+  document.getElementById('results-panel').style.display = 'none';
+  document.getElementById('url-input').value = '';
+  document.getElementById('url-input').focus();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>
