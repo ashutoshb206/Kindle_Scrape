@@ -7,18 +7,6 @@
  
  ---
  
- ## 🚀 Deploy to Railway (public URL in ~3 minutes)
- 
- 1. Push this folder to a GitHub repo (public or private)
- 2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
- 3. Select your repo — Railway auto-detects the Dockerfile
- 4. Click **Deploy**
- 5. Go to **Settings → Networking → Generate Domain** to get your public URL
- 
- That's it. Share the URL with anyone.
- 
- ---
- 
  ## 💻 Run locally
  
  ```bash
