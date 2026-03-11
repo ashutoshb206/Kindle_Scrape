@@ -23,6 +23,10 @@ RUN playwright install-deps chromium
 # Copy app
 COPY . .
 
-# Railway sets PORT env var automatically.
-# Use gunicorn and bind to $PORT (fallback to 8000 for local Docker runs).
-CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${PORT:-8000} app:app --workers 1 --threads 4 --timeout 120"]
+# Railway typically sets PORT env var automatically, but to be safe with Docker
+# deployments we also provide a conventional default.
+ENV PORT=8080
+EXPOSE 8080
+
+# Use gunicorn and bind to $PORT (fallback to 8080).
+CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${PORT:-8080} app:app --workers 1 --threads 4 --timeout 120"]
