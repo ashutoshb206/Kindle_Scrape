@@ -415,6 +415,25 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/favicon.ico")
+def favicon():
+    path = os.path.join(app.root_path, "static", "favicon.ico")
+    if os.path.exists(path):
+        return send_file(path, mimetype="image/x-icon")
+    png_path = os.path.join(app.root_path, "static", "favicon.png")
+    if os.path.exists(png_path):
+        return send_file(png_path, mimetype="image/png")
+    return ("", 204)
+
+
+@app.route("/favicon.png")
+def favicon_png():
+    png_path = os.path.join(app.root_path, "static", "favicon.png")
+    if os.path.exists(png_path):
+        return send_file(png_path, mimetype="image/png")
+    return ("", 404)
+
+
 @app.route("/api/scrape", methods=["POST"])
 def start_scrape():
     data = request.json or {}
