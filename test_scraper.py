@@ -26,8 +26,8 @@ def test_scraper():
     asyncio.run(app.run_scrape(
         job_id=job_id,
         url=url,
-        scrape_details=False,  # Skip details for faster testing
-        max_books=10  # Just test with 10 books
+        scrape_details=True,  # Enable detailed scraping
+        max_books=5  # Just test with 5 books
     ))
 
     # Print results
@@ -40,6 +40,9 @@ def test_scraper():
             print(f"  Title: {book.get('title', 'N/A')}")
             print(f"  Rating: {book.get('rating', 'N/A')}")
             print(f"  Reviews: {book.get('num_reviews', 'N/A')}")
+            print(f"  Publisher: {book.get('publisher', 'N/A')}")
+            print(f"  Publication Date: {book.get('publication_date', 'N/A')}")
+            print(f"  Description: {book.get('description', 'N/A')[:100]}..." if book.get('description') else "  Description: N/A")
     else:
         print(f"Scrape failed: {job.get('error', 'Unknown error')}")
 

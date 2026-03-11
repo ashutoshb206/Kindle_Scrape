@@ -197,25 +197,99 @@ async def scrape_book_page(page, book, log):
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         await asyncio.sleep(1.2)
 
+        # Extract description with multiple fallback selectors
         for sel in [
             "#bookDescription_feature_div .a-expander-content",
             "#productDescription",
             "#bookDescription_feature_div span",
+            "#bookDescription_feature_div",
+            "#productDescriptionFeatureDiv",
+            "#description-iframe-container",
+            "div[data-feature-name='bookDescription']",
+            "div#bookDescription_feature_div > div",
+            "div#productDescription > div",
         ]:
-            el = await page.query_selector(sel)
-            if el:
-                t = (await el.inner_text()).strip()
-                if t: book["description"] = t[:900]; break
+            try:
+                el = await page.query_selector(sel)
+                if el:
+                    t = (await el.inner_text()).strip()
+                    if t and len(t) > 20:  # Ensure meaningful description
+                        book["description"] = t[:900]
+                        break
+            except: pass
 
-        body_text = await page.inner_text("body")
-        if "Publisher" in body_text and "publisher" not in book:
-            m = re.search(r"Publisher\s*[:\u200e]\s*([^\n\r]+)", body_text)
-            if m: book["publisher"] = m.group(1).strip()[:80]
-        if "publication_date" not in book:
-            for pat in [r"Publication date\s*[:\u200e]\s*([^\n\r]+)",
-                        r"Published on\s*[:\u200e]\s*([^\n\r]+)"]:
-                m = re.search(pat, body_text)
-                if m: book["publication_date"] = clean_date(m.group(1).strip()); break
+        # Extract publisher from product details section
+        if "publisher" not in book or not book["publisher"]:
+            for sel in [
+                "#productDetails_feature_div",
+                "#productDetailsTable",
+                "#detailBullets_feature_div",
+                "#productDetails",
+                "#detail-bullets",
+                ".a-section.a-spacing-medium.a-spacing-top-small",
+                "div#productDetails_feature_div > div > table",
+            ]:
+                try:
+                    el = await page.query_selector(sel)
+                    if el:
+                        details_text = await el.inner_text()
+                        # Look for publisher in details section
+                        pub_patterns = [
+                            r"Publisher\s*[:\u200e]\s*([^\n\r]+)",
+                            r"Publisher\s*[:]\s*([^\n\r]+)",
+                            r"Publisher\s*([^\n\r]+)",
+                        ]
+                        for pat in pub_patterns:
+                            m = re.search(pat, details_text, re.IGNORECASE)
+                            if m:
+                                publisher = m.group(1).strip()
+                                # Remove common suffixes and special characters
+                                publisher = re.sub(r'\s*\([^)]*\)$', '', publisher)
+                                publisher = re.sub(r'\s*\[[^\]]*\]$', '', publisher)
+                                publisher = re.sub(r'^[\u200e\u200f\s:]+', '', publisher)  # Remove RTL chars and leading spaces/colons
+                                publisher = re.sub(r'^\s*[:]\s*', '', publisher)  # Remove leading colon
+                                book["publisher"] = publisher[:80]
+                                break
+                        if "publisher" in book and book["publisher"]:
+                            break
+                except: pass
+
+        # Extract publication date from product details section
+        if "publication_date" not in book or not book["publication_date"]:
+            for sel in [
+                "#productDetails_feature_div",
+                "#productDetailsTable",
+                "#detailBullets_feature_div",
+                "#productDetails",
+                "#detail-bullets",
+                ".a-section.a-spacing-medium.a-spacing-top-small",
+                "div#productDetails_feature_div > div > table",
+            ]:
+                try:
+                    el = await page.query_selector(sel)
+                    if el:
+                        details_text = await el.inner_text()
+                        # Look for publication date in details section
+                        date_patterns = [
+                            r"Publication date\s*[:\u200e]\s*([^\n\r]+)",
+                            r"Publication date\s*[:]\s*([^\n\r]+)",
+                            r"Publication date\s*([^\n\r]+)",
+                            r"Published on\s*[:\u200e]\s*([^\n\r]+)",
+                            r"Published on\s*[:]\s*([^\n\r]+)",
+                            r"Published on\s*([^\n\r]+)",
+                            r"First published\s*[:]\s*([^\n\r]+)",
+                        ]
+                        for pat in date_patterns:
+                            m = re.search(pat, details_text, re.IGNORECASE)
+                            if m:
+                                book["publication_date"] = clean_date(m.group(1).strip())
+                                # Clean up special characters from date
+                                book["publication_date"] = re.sub(r'^[\u200e\u200f\s:]+', '', book["publication_date"])
+                                book["publication_date"] = re.sub(r'^\s*[:]\s*', '', book["publication_date"])
+                                break
+                        if "publication_date" in book and book["publication_date"]:
+                            break
+                except: pass
     except Exception as e:
         log(f"  ⚠️  {book.get('title','?')[:40]}: {e}")
     return book
