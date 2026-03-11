@@ -87,26 +87,28 @@ def clean_url(href):
 
 # ─── SCRAPER (ASYNC) ──────────────────────────────────────────────────────────
 
-async def scrape_listing_page(page, url, log):
-    books = []
+async def scrape_listing_page(page, url, log, start_rank=1):
+    """Scrape a single Amazon bestseller listing page."""
     try:
-        await page.goto(url, wait_until="domcontentloaded", timeout=35000)
-        await asyncio.sleep(2)
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        await asyncio.sleep(1.2)
     except Exception as e:
-        log(f"⚠️  Could not load listing page: {e}")
-        return books
+        log(f"⚠️  Failed to load page: {e}")
+        return []
 
-    if "captcha" in page.url.lower() or "ap/signin" in page.url.lower():
+    # Check for CAPTCHA
+    if await page.query_selector("form[action*='/errors/validateCaptcha']"):
         log("⚠️  Amazon CAPTCHA detected. Try again or use a logged-in browser profile.")
-        return books
+        return []
 
     items = await page.query_selector_all(
         "li.zg-item-immersion, .p13n-sc-uncoverable-faceout"
     )
     log(f"📄  Found {len(items)} items on page")
 
-    for idx, item in enumerate(items, 1):
-        book = {"rank": idx}
+    books = []
+    for idx, item in enumerate(items, start_rank):
+        book = {"rank": idx}  # Use the provided starting rank
         try:
             rb = await item.query_selector(".zg-bdg-text")
             if rb:
@@ -344,6 +346,8 @@ async def run_scrape(job_id: str, url: str, scrape_details: bool, max_books: int
             books = []
             base_url = url.split("?")[0].rstrip("/")
             page_num = 1
+            current_rank = 1  # Track overall rank across pages
+            
             while len(books) < max_books:
                 # Check for stop request before each page
                 if should_stop():
@@ -357,11 +361,12 @@ async def run_scrape(job_id: str, url: str, scrape_details: bool, max_books: int
                 else:
                     page_url = f"{base_url}/ref=zg_bs_pg_{page_num}?_encoding=UTF8&pg={page_num}"
                 log(f"📋  Scraping listing page {page_num}...")
-                new_books = await scrape_listing_page(page, page_url, log)
+                new_books = await scrape_listing_page(page, page_url, log, current_rank)
                 if not new_books:
                     log(f"  ⚠️  No more books found on page {page_num}, stopping")
                     break
                 books += new_books
+                current_rank += len(new_books)  # Update rank for next page
                 log(f"  ✅  Page {page_num}: {len(new_books)} books (running total: {len(books)})")
                 page_num += 1
                 if page_num > 5:
